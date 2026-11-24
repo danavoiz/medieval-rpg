@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medieval Open-World RPG — v2</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0e1013; font-family: system-ui, -apple-system, sans-serif; color: #f4f5f7; }
+    #hud {
+      position: fixed; inset: 0; pointer-events: none; padding: 18px 22px;
+      display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .top-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .panel {
+      background: rgba(14, 16, 19, 0.78); border: 1px solid rgba(226, 164, 79, 0.35);
+      backdrop-filter: blur(8px); padding: 12px 16px; border-radius: 8px;
+      pointer-events: auto;
+    }
+    .panel h1 { font-size: 16px; font-weight: 700; color: #f2c178; margin-bottom: 4px; }
+    .panel p { font-size: 13px; color: #d4dae3; line-height: 1.4; }
+    .bars { display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
+    .bar-row { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+    .bar-head { display: flex; justify-content: space-between; }
+    .bar-track { width: 100%; height: 8px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; transition: width 0.15s ease; }
+    .hp { background: #d94e4e; width: 100%; }
+    .stamina { background: #4caf82; width: 100%; }
+    .bottom-bar { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+    .controls { font-size: 12px; color: #a8b1be; }
+    .controls span { color: #f2c178; font-weight: 600; }
+    .weather-pill { font-size: 12px; color: #7ce0b0; font-weight: 600; margin-top: 4px; }
+    .toast {
+      position: fixed; top: 88px; left: 50%; transform: translateX(-50%);
+      background: rgba(14, 16, 19, 0.88); border: 1px solid #e2a44f;
+      padding: 8px 16px; border-radius: 6px; font-size: 13px; color: #f2c178;
+      opacity: 0; transition: opacity 0.25s ease; pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+    #crosshair {
+      position: fixed; top: 50%; left: 50%; width: 8px; height: 8px;
+      margin: -4px 0 0 -4px; border: 1.5px solid rgba(242, 193, 120, 0.85);
+      border-radius: 50%; pointer-events: none;
+    }
+    #inventoryModal {
+      display: none; position: fixed; inset: 0; background: rgba(8, 10, 13, 0.72);
+      align-items: center; justify-content: center; pointer-events: auto; z-index: 20;
+    }
+    #inventoryModal.open { display: flex; }
+    .inv-box {
+      width: min(560px, 92vw); background: #14181f; border: 1px solid #e2a44f;
+      border-radius: 10px; padding: 20px;
+    }
+    .inv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .inv-head h2 { font-size: 18px; color: #f2c178; }
+    .inv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+    .inv-item {
+      background: #0e1013; border: 1px solid #272d37; border-radius: 6px;
+      padding: 10px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+    }
+    .inv-item.equipped { border-color: #4caf82; }
+    .inv-item:hover { border-color: #f2c178; }
+    .inv-name { font-size: 14px; font-weight: 600; color: #f4f5f7; }
+    .inv-meta { font-size: 12px; color: #a8b1be; }
+    .inv-badge { font-size: 11px; color: #7ce0b0; font-weight: 600; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="crosshair"></div>
+  <div id="toast" class="toast"></div>
+  <div id="hud">
+    <div class="top-bar">
+      <div class="panel">
+        <h1>Medieval Open-World RPG</h1>
+        <p id="status">Кликни по экрану для захвата мыши · Нажми I для инвентаря</p>
+        <p class="weather-pill" id="weatherLabel">Погода: Ясно · День · Спутник рядом</p>
+      </div>
+      <div class="panel bars">
+        <div class="bar-row">
+          <div class="bar-head"><span>Здоровье</span><span id="hpText">100 / 100</span></div>
+          <div class="bar-track"><div class="bar-fill hp" id="hpBar"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-head"><span>Выносливость</span><span id="staminaText">100 / 100</span></div>
+          <div class="bar-track"><div class="bar-fill stamina" id="staminaBar"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <div class="panel controls">
+        <span>WASD</span> Ходьба · <span>Shift</span> Бег · <span>Space</span> Прыжок ·
+        <span>ЛКМ</span> Удар · <span>ПКМ</span> Блок · <span>I</span> Инвентарь ·
+        <span>E</span> Лечение / Взаимодействие · <span>T</span> Погода
+      </div>
+      <div class="panel controls">
+        Убито врагов: <span id="killsCount">0</span> · Золото: <span id="goldCount">25</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="inventoryModal">
+    <div class="inv-box">
+      <div class="inv-head">
+        <h2>Инвентарь и экипировка (I — закрыть)</h2>
+        <span class="inv-meta" id="invStats">Урон: 22 · Броня: 15%</span>
+      </div>
+      <div class="inv-grid" id="invGrid"></div>
+      <p class="inv-meta">Кликни по предмету, чтобы экипировать или использовать. Модели из <code>assets/manifest.json</code> подгружаются автоматически при наличии <code>.glb</code> файлов.</p>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

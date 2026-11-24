@@ -1,0 +1,18 @@
+{
+  "weapons": {
+    "longsword": "./assets/models/weapons/longsword.glb",
+    "battleaxe": "./assets/models/weapons/battleaxe.glb",
+    "warhammer": "./assets/models/weapons/warhammer.glb",
+    "shield": "./assets/models/weapons/kite_shield.glb"
+  },
+  "characters": {
+    "enemy_knight": "./assets/models/characters/enemy_knight.glb",
+    "companion_knight": "./assets/models/characters/companion_knight.glb",
+    "villager": "./assets/models/characters/villager.glb"
+  },
+  "environment": {
+    "oak_tree": "./assets/models/environment/oak_tree.glb",
+    "pine_tree": "./assets/models/environment/pine_tree.glb",
+    "boulder": "./assets/models/environment/boulder.glb"
+  }
+}
