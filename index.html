@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medieval Open-World RPG — Real 3D Models</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0e1013; font-family: system-ui, -apple-system, sans-serif; color: #f4f5f7; }
+    #hud { position: fixed; inset: 0; pointer-events: none; padding: 18px 22px; display: flex; flex-direction: column; justify-content: space-between; }
+    .top-bar, .bottom-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .bottom-bar { align-items: flex-end; }
+    .panel { background: rgba(14,16,19,0.78); border: 1px solid rgba(226,164,79,0.35); backdrop-filter: blur(8px); padding: 12px 16px; border-radius: 8px; pointer-events: auto; }
+    .panel h1 { font-size: 16px; color: #f2c178; margin-bottom: 4px; }
+    .panel p { font-size: 13px; color: #d4dae3; line-height: 1.4; }
+    .bars { display: flex; flex-direction: column; gap: 8px; min-width: 230px; }
+    .bar-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; }
+    .bar-track { width: 100%; height: 8px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; transition: width 0.15s ease; }
+    .hp { background: #d94e4e; width: 100%; }
+    .stamina { background: #4caf82; width: 100%; }
+    .controls { font-size: 12px; color: #a8b1be; }
+    .controls span { color: #f2c178; font-weight: 600; }
+    .pill { font-size: 12px; color: #7ce0b0; font-weight: 600; margin-top: 4px; }
+    .toast { position: fixed; top: 92px; left: 50%; transform: translateX(-50%); background: rgba(14,16,19,0.9); border: 1px solid #e2a44f; padding: 8px 16px; border-radius: 6px; font-size: 13px; color: #f2c178; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+    #crosshair { position: fixed; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border: 1.5px solid rgba(242,193,120,0.85); border-radius: 50%; pointer-events: none; }
+    #invModal { display: none; position: fixed; inset: 0; background: rgba(8,10,13,0.74); align-items: center; justify-content: center; pointer-events: auto; z-index: 20; }
+    #invModal.open { display: flex; }
+    .inv-box { width: min(540px, 92vw); background: #14181f; border: 1px solid #e2a44f; border-radius: 10px; padding: 20px; }
+    .inv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .inv-head h2 { font-size: 17px; color: #f2c178; }
+    .inv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+    .inv-item { background: #0e1013; border: 1px solid #272d37; border-radius: 6px; padding: 10px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .inv-item.equipped { border-color: #4caf82; }
+    .inv-item:hover { border-color: #f2c178; }
+    .inv-name { font-size: 14px; font-weight: 600; }
+    .inv-meta { font-size: 12px; color: #a8b1be; }
+    .inv-badge { font-size: 11px; color: #7ce0b0; font-weight: 600; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <div id="crosshair"></div>
+  <div id="toast" class="toast"></div>
+  <div id="hud">
+    <div class="top-bar">
+      <div class="panel">
+        <h1>Medieval Open-World RPG</h1>
+        <p id="modelStatus">Загрузка реальных 3D-моделей Poly Haven (CC0): 0 / 7...</p>
+        <p class="pill" id="weatherLabel">Погода: Ясно · День · Спутник рядом</p>
+      </div>
+      <div class="panel bars">
+        <div><div class="bar-head"><span>Здоровье</span><span id="hpText">100 / 100</span></div><div class="bar-track"><div class="bar-fill hp" id="hpBar"></div></div></div>
+        <div><div class="bar-head"><span>Выносливость</span><span id="staminaText">100 / 100</span></div><div class="bar-track"><div class="bar-fill stamina" id="staminaBar"></div></div></div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <div class="panel controls"><span>WASD</span> Ходьба · <span>Shift</span> Бег · <span>Space</span> Прыжок · <span>ЛКМ</span> Удар · <span>ПКМ</span> Блок · <span>I</span> Инвентарь · <span>E</span> Зелье / NPC · <span>T</span> Погода</div>
+      <div class="panel controls">Врагов: <span id="killsCount">0</span> · Золото: <span id="goldCount">25</span></div>
+    </div>
+  </div>
+  <div id="invModal"><div class="inv-box"><div class="inv-head"><h2>Инвентарь (I — закрыть)</h2><span class="inv-meta" id="invStats"></span></div><div class="inv-grid" id="invGrid"></div><p class="inv-meta">Реальные CC0 3D PBR-модели загружаются напрямую с Poly Haven (эсток, топор, булава, рыцарский щит, ели, валуны, коряги).</p></div></div>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x88a9c3);
+    scene.fog = new THREE.FogExp2(0x88a9c3, 0.008);
+    const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 400);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    document.body.appendChild(renderer.domElement);
+
+    const hemi = new THREE.HemisphereLight(0xdbeafe, 0x3b4d2b, 0.8);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
+    sun.position.set(45, 70, 35);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -75;
+    sun.shadow.camera.right = sun.shadow.camera.top = 75;
+    scene.add(sun);
+
+    const terrainH = (x, z) => Math.sin(x * 0.035) * Math.cos(z * 0.035) * 3.2 + Math.sin(x * 0.09 + 1.2) * Math.sin(z * 0.08) * 1.1;
+    const tGeo = new THREE.PlaneGeometry(260, 260, 120, 120);
+    tGeo.rotateX(-Math.PI / 2);
+    const pAttr = tGeo.attributes.position;
+    for (let i = 0; i < pAttr.count; i++) pAttr.setY(i, terrainH(pAttr.getX(i), pAttr.getZ(i)));
+    tGeo.computeVertexNormals();
+    const terrain = new THREE.Mesh(tGeo, new THREE.MeshStandardMaterial({ color: 0x3f5a36, roughness: 0.92 }));
+    terrain.receiveShadow = true;
+    scene.add(terrain);
+
+    // Medieval Keep
+    const keepGroup = new THREE.Group();
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x5c6066, roughness: 0.88 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x3a261e, roughness: 0.85 });
+    const keepBody = new THREE.Mesh(new THREE.BoxGeometry(14, 14, 14), stoneMat);
+    keepBody.position.y = 7; keepBody.castShadow = keepBody.receiveShadow = true;
+    keepGroup.add(keepBody);
+    for (const [ox, oz] of [[-7,-7],[7,-7],[-7,7],[7,7]]) {
+      const tw = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.5, 18, 12), stoneMat);
+      tw.position.set(ox, 9, oz); tw.castShadow = true;
+      const rf = new THREE.Mesh(new THREE.ConeGeometry(2.8, 4.5, 12), roofMat);
+      rf.position.set(ox, 20.2, oz); rf.castShadow = true;
+      keepGroup.add(tw, rf);
+    }
+    keepGroup.position.set(0, terrainH(0, -55) - 0.5, -55);
+    scene.add(keepGroup);
+
+    const state = {
+      hp: 100, maxHp: 100, stamina: 100, gold: 25, kills: 0, equippedWeapon: 'estoc', armorReduction: 0.15,
+      inventory: [
+        { id: 'estoc', name: 'Антикварный эсток (Poly Haven)', type: 'weapon', damage: 24, speed: 0.32, equipped: true },
+        { id: 'axe', name: 'Средневековый топор (Poly Haven)', type: 'weapon', damage: 30, speed: 0.44, equipped: false },
+        { id: 'mace', name: 'Резная булава (Poly Haven)', type: 'weapon', damage: 34, speed: 0.48, equipped: false },
+        { id: 'plate', name: 'Латная кираса (25%)', type: 'armor', defense: 0.25, equipped: false },
+        { id: 'potion', name: 'Зелье лечения (+35 HP)', type: 'consumable', count: 3 }
+      ]
+    };
+
+    const weaponRig = new THREE.Group();
+    camera.add(weaponRig);
+    scene.add(camera);
+    const swordGroup = new THREE.Group();
+    swordGroup.position.set(0.36, -0.3, -0.58);
+    weaponRig.add(swordGroup);
+    const shieldGroup = new THREE.Group();
+    shieldGroup.position.set(-0.4, -0.26, -0.54);
+    shieldGroup.rotation.set(0, 0.35, 0);
+    weaponRig.add(shieldGroup);
+
+    const realModels = {};
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.setCrossOrigin('anonymous');
+    let loadedCount = 0;
+
+    function normalizeModel(obj, targetSize) {
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const scale = targetSize / maxDim;
+      obj.scale.setScalar(scale);
+      obj.position.sub(center.multiplyScalar(scale));
+      obj.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+      return obj;
+    }
+
+    async function loadPolyHaven(id, key, targetSize, onReady) {
+      try {
+        const res = await fetch(`https://api.polyhaven.com/files/${id}`);
+        const data = await res.json();
+        const url = data?.gltf?.['1k']?.gltf?.url;
+        if (!url) return;
+        gltfLoader.load(url, (gltf) => {
+          const wrap = new THREE.Group();
+          wrap.add(normalizeModel(gltf.scene, targetSize));
+          realModels[key] = wrap;
+          loadedCount++;
+          document.getElementById('modelStatus').textContent = `Реальные 3D PBR-модели Poly Haven загружены: ${loadedCount} / 7`;
+          if (onReady) onReady(wrap);
+        });
+      } catch (e) { console.warn('Poly Haven load skipped:', id, e); }
+    }
+
+    function equipWeapon(id) {
+      swordGroup.clear();
+      if (realModels[id]) {
+        const m = realModels[id].clone();
+        m.rotation.set(0.2, Math.PI / 2, 0);
+        swordGroup.add(m);
+      } else {
+        const fallback = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.85, 0.02), new THREE.MeshStandardMaterial({ color: 0xc2c8d1, metalness: 0.85, roughness: 0.25 }));
+        fallback.position.y = 0.35;
+        swordGroup.add(fallback);
+      }
+    }
+    equipWeapon('estoc');
+
+    const fallbackShield = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.52, 0.03), new THREE.MeshStandardMaterial({ color: 0x6b2c2c, roughness: 0.75 }));
+    shieldGroup.add(fallbackShield);
+
+    // Environment containers (upgraded to real Poly Haven meshes when loaded)
+    const envGroup = new THREE.Group();
+    scene.add(envGroup);
+    const treeCoords = [], rockCoords = [];
+    for (let i = 0; i < 45; i++) {
+      const a = (i * 2.39996) % (Math.PI * 2), r = 16 + ((i * 19) % 85);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (Math.hypot(x, z + 55) > 17) treeCoords.push([x, terrainH(x, z), z]);
+    }
+    for (let i = 0; i < 20; i++) {
+      const a = (i * 1.7) % (Math.PI * 2), r = 12 + ((i * 29) % 80);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      rockCoords.push([x, terrainH(x, z), z]);
+    }
+
+    function populateEnv() {
+      envGroup.clear();
+      for (const [x, y, z] of treeCoords) {
+        const obj = realModels.tree ? realModels.tree.clone() : new THREE.Mesh(new THREE.ConeGeometry(1.8, 6.2, 7), new THREE.MeshStandardMaterial({ color: 0x2d4c24 }));
+        obj.position.set(x, y + (realModels.tree ? 3.2 : 3.1), z);
+        obj.rotation.y = (x * 13) % 6.28;
+        envGroup.add(obj);
+      }
+      for (const [x, y, z] of rockCoords) {
+        const obj = realModels.boulder ? realModels.boulder.clone() : new THREE.Mesh(new THREE.DodecahedronGeometry(1.2, 1), new THREE.MeshStandardMaterial({ color: 0x676b70 }));
+        obj.position.set(x, y + 0.6, z);
+        obj.rotation.y = (z * 7) % 6.28;
+        envGroup.add(obj);
+      }
+      if (realModels.trunk) {
+        const log = realModels.trunk.clone();
+        log.position.set(7, terrainH(7, 10) + 0.4, 10);
+        envGroup.add(log);
+      }
+    }
+    populateEnv();
+
+    // Load 7 Real Poly Haven CC0 PBR Models
+    loadPolyHaven('antique_estoc', 'estoc', 1.05, () => { if (state.equippedWeapon === 'estoc') equipWeapon('estoc'); });
+    loadPolyHaven('wooden_axe_03', 'axe', 0.85, () => { if (state.equippedWeapon === 'axe') equipWeapon('axe'); });
+    loadPolyHaven('ornate_medieval_mace', 'mace', 0.85, () => { if (state.equippedWeapon === 'mace') equipWeapon('mace'); });
+    loadPolyHaven('kite_shield', 'shield', 0.72, (m) => { shieldGroup.clear(); const s = m.clone(); s.rotation.y = Math.PI; shieldGroup.add(s); });
+    loadPolyHaven('fir_tree_01', 'tree', 7.5, populateEnv);
+    loadPolyHaven('boulder_01', 'boulder', 2.4, populateEnv);
+    loadPolyHaven('dead_tree_trunk', 'trunk', 3.2, populateEnv);
+
+    // Knights & NPCs
+    function makeKnight(armorHex, capeHex) {
+      const g = new THREE.Group();
+      const am = new THREE.MeshStandardMaterial({ color: armorHex, metalness: 0.75, roughness: 0.3 });
+      const cm = new THREE.MeshStandardMaterial({ color: capeHex, roughness: 0.85 });
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.95, 0.45), am); torso.position.y = 1.25; torso.castShadow = true;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.46, 0.42), am); head.position.y = 2.02; head.castShadow = true;
+      const cape = new THREE.Mesh(new THREE.BoxGeometry(0.66, 1.05, 0.05), cm); cape.position.set(0, 1.15, -0.26);
+      g.add(torso, head, cape);
+      return g;
+    }
+    const companion = { mesh: makeKnight(0x4b749f, 0x1f4e78), pos: new THREE.Vector3(-3, 0, 12), cd: 0 };
+    scene.add(companion.mesh);
+    const villager = { mesh: makeKnight(0x7c6244, 0x4d3b27), pos: new THREE.Vector3(6, 0, 6) };
+    scene.add(villager.mesh);
+    const enemies = [[14,-10],[-16,-20],[4,-36],[-10,-45]].map(([x, z]) => {
+      const mesh = makeKnight(0x262930, 0x7a1c1c);
+      scene.add(mesh);
+      return { mesh, pos: new THREE.Vector3(x, terrainH(x, z), z), hp: 80, cd: 0, alive: true };
+    });
+
+    let toastT = 0;
+    const toast = (m) => { const e = document.getElementById('toast'); e.textContent = m; e.classList.add('show'); toastT = 2.2; };
+    const syncHUD = () => {
+      document.getElementById('hpBar').style.width = `${(state.hp / state.maxHp) * 100}%`;
+      document.getElementById('hpText').textContent = `${Math.ceil(state.hp)} / ${state.maxHp}`;
+      document.getElementById('staminaBar').style.width = `${state.stamina}%`;
+      document.getElementById('staminaText').textContent = `${Math.ceil(state.stamina)} / 100`;
+      document.getElementById('killsCount').textContent = state.kills;
+      document.getElementById('goldCount').textContent = state.gold;
+    };
+    const renderInv = () => {
+      const grid = document.getElementById('invGrid'); grid.innerHTML = '';
+      const w = state.inventory.find((i) => i.id === state.equippedWeapon);
+      document.getElementById('invStats').textContent = `Урон: ${w?.damage || 22} · Броня: ${Math.round(state.armorReduction * 100)}%`;
+      for (const item of state.inventory) {
+        const d = document.createElement('div');
+        d.className = `inv-item ${item.equipped ? 'equipped' : ''}`;
+        d.innerHTML = `<div><div class="inv-name">${item.name}</div><div class="inv-meta">${item.type === 'weapon' ? 'Урон ' + item.damage : item.type === 'armor' ? 'Защита ' + Math.round(item.defense * 100) + '%' : 'Шт: ' + item.count}</div></div><div class="inv-badge">${item.equipped ? 'Надето' : ''}</div>`;
+        d.onclick = () => {
+          if (item.type === 'weapon') { state.inventory.forEach((x) => { if (x.type === 'weapon') x.equipped = false; }); item.equipped = true; state.equippedWeapon = item.id; equipWeapon(item.id); toast('Экипировано: ' + item.name); }
+          else if (item.type === 'armor') { item.equipped = !item.equipped; state.armorReduction = item.equipped ? item.defense : 0.15; }
+          else if (item.count > 0) { item.count--; state.hp = Math.min(state.maxHp, state.hp + 35); toast('+35 HP'); }
+          renderInv(); syncHUD();
+        };
+        grid.appendChild(d);
+      }
+    };
+
+    const keys = {}, pPos = new THREE.Vector3(0, 5, 18);
+    let yaw = 0, pitch = 0, vy = 0, grounded = true, swing = 0, blocking = false, invOpen = false, wMode = 0;
+    const weathers = [
+      { n: 'Ясно · День', bg: 0x88a9c3, fog: 0.008, s: 2.2, h: 0.8 },
+      { n: 'Туманный рассвет', bg: 0x9b8d7e, fog: 0.022, s: 1.2, h: 0.5 },
+      { n: 'Ночная буря', bg: 0x0e1420, fog: 0.018, s: 0.35, h: 0.25 }
+    ];
+    addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code === 'KeyI') { invOpen = !invOpen; document.getElementById('invModal').classList.toggle('open', invOpen); if (invOpen) { document.exitPointerLock?.(); renderInv(); } }
+      if (e.code === 'KeyT') { wMode = (wMode + 1) % weathers.length; const w = weathers[wMode]; scene.background.setHex(w.bg); scene.fog.color.setHex(w.bg); scene.fog.density = w.fog; sun.intensity = w.s; hemi.intensity = w.h; document.getElementById('weatherLabel').textContent = `Погода: ${w.n} · Спутник рядом`; }
+      if (e.code === 'KeyE') {
+        if (pPos.distanceTo(villager.pos) < 4.5) { state.gold += 10; toast('Житель: «У замка враги! Вот 10 золота.»'); syncHUD(); }
+        else { const p = state.inventory.find((i) => i.id === 'potion'); if (p?.count > 0 && state.hp < state.maxHp) { p.count--; state.hp = Math.min(state.maxHp, state.hp + 35); toast('+35 HP'); syncHUD(); } }
+      }
+    });
+    addEventListener('keyup', (e) => { keys[e.code] = false; });
+    renderer.domElement.addEventListener('click', () => { if (!invOpen && document.pointerLockElement !== renderer.domElement) renderer.domElement.requestPointerLock(); });
+    addEventListener('mousedown', (e) => {
+      if (invOpen || document.pointerLockElement !== renderer.domElement) return;
+      const w = state.inventory.find((i) => i.id === state.equippedWeapon);
+      if (e.button === 0 && swing <= 0 && state.stamina >= 15) {
+        swing = w?.speed || 0.32; state.stamina -= 15;
+        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        for (const en of enemies) {
+          if (!en.alive) continue;
+          const v = en.pos.clone().sub(pPos); v.y = 0;
+          if (v.length() < 3.6 && v.normalize().dot(new THREE.Vector3(dir.x, 0, dir.z).normalize()) > 0.35) {
+            en.hp -= (w?.damage || 24);
+            toast(`Попадание! -${w?.damage || 24} HP`);
+            if (en.hp <= 0) { en.alive = false; scene.remove(en.mesh); state.kills++; state.gold += 15; toast('Рыцарь повержен! +15 золота'); }
+          }
+        }
+      }
+      if (e.button === 2) blocking = true;
+    });
+    addEventListener('mouseup', (e) => { if (e.button === 2) blocking = false; });
+    addEventListener('contextmenu', (e) => e.preventDefault());
+    addEventListener('mousemove', (e) => { if (!invOpen && document.pointerLockElement === renderer.domElement) { yaw -= e.movementX * 0.0022; pitch = Math.max(-1.4, Math.min(1.4, pitch - e.movementY * 0.0022)); } });
+    addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+    const clock = new THREE.Clock(), fwd = new THREE.Vector3(), rgt = new THREE.Vector3();
+    syncHUD();
+    (function loop() {
+      requestAnimationFrame(loop);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      if (toastT > 0 && (toastT -= dt) <= 0) document.getElementById('toast').classList.remove('show');
+      if (!invOpen) {
+        const sprint = (keys['ShiftLeft'] || keys['ShiftRight']) && state.stamina > 5;
+        state.stamina = Math.max(0, Math.min(100, state.stamina + (sprint && (keys['KeyW']||keys['KeyA']||keys['KeyS']||keys['KeyD']) ? -20 : 14) * dt));
+        fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
+        rgt.set(Math.cos(yaw), 0, -Math.sin(yaw)).normalize();
+        const mv = new THREE.Vector3();
+        if (keys['KeyW']) mv.add(fwd); if (keys['KeyS']) mv.sub(fwd); if (keys['KeyD']) mv.add(rgt); if (keys['KeyA']) mv.sub(rgt);
+        if (mv.lengthSq() > 0) pPos.add(mv.normalize().multiplyScalar((sprint ? 12.5 : 7) * dt));
+        if (keys['Space'] && grounded) { vy = 7.5; grounded = false; }
+      }
+      vy -= 20 * dt; pPos.y += vy * dt;
+      const gy = terrainH(pPos.x, pPos.z) + 1.75;
+      if (pPos.y <= gy) { pPos.y = gy; vy = 0; grounded = true; }
+      camera.position.copy(pPos); camera.rotation.order = 'YXZ'; camera.rotation.y = yaw; camera.rotation.x = pitch;
+
+      if (swing > 0) { swing = Math.max(0, swing - dt); const p = Math.sin((1 - swing / 0.35) * Math.PI); swordGroup.rotation.set(-0.25 - p * 1.1, -0.15 + p * 0.65, 0.12 + p * 0.4); }
+      else swordGroup.rotation.set(-0.25, -0.15, 0.12);
+      shieldGroup.position.x += ((blocking ? -0.16 : -0.4) - shieldGroup.position.x) * 12 * dt;
+      shieldGroup.position.y += ((blocking ? -0.16 : -0.26) - shieldGroup.position.y) * 12 * dt;
+
+      villager.pos.y = terrainH(villager.pos.x, villager.pos.z); villager.mesh.position.copy(villager.pos);
+      let targetEn = null, minD = 18;
+      for (const en of enemies) if (en.alive && en.pos.distanceTo(companion.pos) < minD) { minD = en.pos.distanceTo(companion.pos); targetEn = en; }
+      const cGoal = targetEn ? targetEn.pos : pPos.clone().add(new THREE.Vector3(-2.5, 0, 2.5));
+      const cVec = cGoal.clone().sub(companion.pos); cVec.y = 0;
+      if (cVec.length() > 2.2) { cVec.normalize(); companion.pos.addScaledVector(cVec, 4.6 * dt); companion.mesh.rotation.y = Math.atan2(cVec.x, cVec.z); }
+      companion.pos.y = terrainH(companion.pos.x, companion.pos.z); companion.mesh.position.copy(companion.pos);
+      if (companion.cd > 0) companion.cd -= dt;
+      if (targetEn && minD < 2.6 && companion.cd <= 0) { companion.cd = 1.4; targetEn.hp -= 12; if (targetEn.hp <= 0) { targetEn.alive = false; scene.remove(targetEn.mesh); state.kills++; state.gold += 15; toast('Спутник добил врага! +15 золота'); } }
+
+      for (const en of enemies) {
+        if (!en.alive) continue;
+        if (en.cd > 0) en.cd -= dt;
+        const v = pPos.clone().sub(en.pos); v.y = 0; const d = v.length();
+        if (d < 24 && d > 2.2) { v.normalize(); en.pos.addScaledVector(v, 3.6 * dt); en.mesh.rotation.y = Math.atan2(v.x, v.z); }
+        else if (d <= 2.3 && en.cd <= 0) { en.cd = 1.6; state.hp = Math.max(0, state.hp - (blocking ? 3.5 : 14 * (1 - state.armorReduction))); if (state.hp <= 0) { state.hp = state.maxHp; pPos.set(0, 5, 18); toast('Возрождение у лагеря'); } }
+        en.pos.y = terrainH(en.pos.x, en.pos.z); en.mesh.position.copy(en.pos);
+      }
+      syncHUD();
+      renderer.render(scene, camera);
+    })();
+  </script>
+</body>
+</html>
